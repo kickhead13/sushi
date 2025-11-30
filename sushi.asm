@@ -68,9 +68,12 @@ copy_second:
         cmp al, 10
         je skip_newline
 
+        cmp al, 34
+        je double_quote
+
         cmp al, 32
         je split
-        
+dont_skip_char:        
         mov [rdi], al
 skip_char:
         inc rdi
@@ -117,6 +120,9 @@ wait_and_main:
 
         jmp main
 split:
+        cmp r15, 0
+        jne dont_skip_char
+        
         mov byte [rdi], 0
 
         inc rdi
@@ -171,3 +177,9 @@ clean_buffer:
         jne .cloop
 
         ret
+
+double_quote:
+        not r15
+        inc rsi
+        jmp copy_second
+
