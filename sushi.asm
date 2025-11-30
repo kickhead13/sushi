@@ -1,5 +1,6 @@
 FORMAT elf64 EXECUTABLE 3
 SEGMENT READABLE EXECUTABLE WRITABLE
+deb_mess db "FAIL"
 ls_command db "/usr/bin/",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 command_buffer rb 256
 buffer rb 200
@@ -68,6 +69,9 @@ copy_second:
         cmp al, 10
         je skip_newline
 
+        cmp al, '>'
+        je redirection
+
         cmp al, 34
         je double_quote
 
@@ -81,8 +85,8 @@ skip_newline:
         inc rsi
         test al, al
         jnz copy_second
-
         add rdx, 8
+exit_copy:
         mov QWORD [rdx], 0
 
         mov r10, 0
@@ -107,6 +111,12 @@ exit:
         mov rdi, 0
         syscall
 fail:
+        mov rax, 1
+        mov rdi, 1
+        mov rsi, deb_mess
+        mov rdx, 4
+        syscall
+        
         mov rax, 60
         mov rdi, 1
         syscall
@@ -130,6 +140,10 @@ split:
         add rdx, 8
         dec rdi
         
+        jmp skip_char
+
+inc_rdi_and_skip_char:
+        inc rdi
         jmp skip_char
 
 handle_cd_cmd:
@@ -182,4 +196,53 @@ double_quote:
         not r15
         inc rsi
         jmp copy_second
+
+redirection:
+        cmp r15, 0
+        jne dont_skip_char
+
+        push rdi
+        push rdx
+        push r11
+        push rsi
+
+
+        mov rdi, rsi
+        inc rdi
+        inc rdi
+
+        mov r11, rdi
+
+.loop_to_newline:
+        inc r11
+        cmp BYTE [r11], 10
+        jne .loop_to_newline
+
+        mov BYTE [r11], 0
+
+        mov rax, 2
+        mov rsi, 578
+        mov rdx, 448
+        syscall
+
+
+        cmp rax, -1
+        je fail
+
+        ; dup2 fd -> stdout
+        mov rdi, rax
+        mov rax, 33
+        mov rsi, 1
+        syscall
+
+        cmp rax, -1
+        je fail
+
+        pop rsi
+        pop r11
+        pop rdx
+        pop rdi
+
+        sub rdx, 8
+        jmp exit_copy
 
