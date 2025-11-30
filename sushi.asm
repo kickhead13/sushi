@@ -1,17 +1,17 @@
 FORMAT elf64 EXECUTABLE 3
 SEGMENT READABLE EXECUTABLE WRITABLE
-debug_mess db "DEBUG",10
 ls_command db "/usr/bin/",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 command_buffer rb 256
-buffer rb 100
+buffer rb 200
 
-MAX_ARGS=20*8
-BUFFER_SIZE=100
+MAX_ARGS=20000*8
+BUFFER_SIZE=200
 ST_SIZE_OFFSET=48
 BIN_OFFSET=9
 
 entry main
 main:
+        call clean_buffer
         mov rax, 0                    ; READ SYSCALL on STDIN TO BUFFER
         mov rdi, 0
         mov rsi, buffer
@@ -20,6 +20,8 @@ main:
 
         cmp rax, 0                   ; nothing read -> exit
         je exit
+
+        call handle_cd_cmd
 
         mov rax, 57                  ; fork
         syscall
@@ -42,11 +44,9 @@ main:
         cmp rax, 0xffffffffffffffff
         je fail
 
-        push rax 
-
         mov rsi, ls_command
         mov rdi, command_buffer
-        pop rdx
+        mov rdx, rax
         mov r12, rdx
 
 copy_first:
@@ -116,24 +116,6 @@ wait_and_main:
         syscall
 
         jmp main
-debug:
-        push rax
-        push rdi
-        push rsi
-        push rdx
-
-        mov rax, 1
-        mov rdi, 1
-        mov rsi, debug_mess
-        mov rdx, 6
-        syscall
-
-        pop rdx
-        pop rsi
-        pop rdi
-        pop rax
-        ret
-
 split:
         mov byte [rdi], 0
 
@@ -142,4 +124,50 @@ split:
         add rdx, 8
         dec rdi
         
-        jmp skip_char 
+        jmp skip_char
+
+handle_cd_cmd:
+        ; check command starts with 'cd'
+
+        mov r12, buffer
+        cmp byte [r12], 'c'
+        jne .rtrn
+
+        inc r12
+        cmp byte [r12], 'd'
+        jne .rtrn
+
+        inc r12
+        inc r12
+        
+        mov r11, r12
+        
+.to_end_path:
+        inc r11
+        cmp byte [r11], 10
+        jne .to_end_path
+        mov byte [r11], 0
+
+        ; call chdir to path
+        mov rax, 80
+        mov rdi, r12
+        syscall
+
+        cmp rax, -1
+        je fail
+        jmp main
+.rtrn:
+        ret
+        
+clean_buffer:
+        mov r12, BUFFER_SIZE
+        mov r11, buffer
+.cloop:
+        mov byte [r11], 0
+        inc r11
+        sub r12, 1
+
+        cmp r12, 0
+        jne .cloop
+
+        ret
