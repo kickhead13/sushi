@@ -287,8 +287,6 @@ register_for_pipe:
         mov rdi, pipefd
         syscall
 
-        call debug
-        
         ; fork
         mov rax, 57
         syscall
