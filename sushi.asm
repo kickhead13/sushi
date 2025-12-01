@@ -4,7 +4,8 @@ deb_mess db "FAIL",10
 ls_command db "/usr/bin/",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 command_buffer rb 256
 buffer rb 200
-pipefd rb 8
+pipefd   rb 8
+pipefd1  rb 8
 
 MAX_PIPES=10
 MAX_ARGS=2000*8
@@ -38,6 +39,7 @@ main:
         jne wait_and_main
 
 start_copy:
+        mov rcx, 0
         mov rax, 9
         mov rdi, 0
         mov rsi, MAX_ARGS
@@ -101,9 +103,6 @@ skip_newline:
 exit_copy:
         mov QWORD [rdx], 0
 
-        ; mov r10, 0
-        ; mov r11, 0
-
         mov rax, 59
         mov rdi, command_buffer
         mov rsi, r12
@@ -122,7 +121,7 @@ exit:
         syscall
 fail:
         mov rax, 1
-        mov rdi, 1
+        mov rdi, 2
         mov rsi, deb_mess
         mov rdx, 4
         syscall
@@ -131,13 +130,16 @@ fail:
         mov rdi, 1
         syscall
 wait_and_main:
-        ; mov rax, 61
-        ; mov rdi, 0
-        ; mov rsi, 0
-        ; mov rdx, 0
-        ; mov r10, 0
-        ; syscall
+        cmp rcx, 0
+        jne main
 
+        mov rax, 61
+        mov rdi, 0
+        mov rsi, 0
+        mov rdx, 0
+        mov r10, 0
+        syscall
+        
         jmp main
 split:
         cmp r15, 0
@@ -268,25 +270,23 @@ redirection:
         jmp exit_copy
 
 register_for_pipe:
+
+        
         push rsi
         add rdx, 8
-        
-        mov QWORD [rdx], 0
-                ; mmap for command_buffer*S*
-                ; mov rax, 9
-                ; mov rdi, 0
-                ; mov rsi, MAX_PIPES*256  ; mmaping for MAX_PIPES
-                ; mov rdx, 3
-                ; mov r10, 34
-                ; mov r8, 0
-                ; mov r9, 0
-                ; syscall
 
+        mov QWORD [rdx], 0
+
+        mov rdi, 0
+        mov edi, DWORD [pipefd]
+
+        push rdi
         ; pipe
         mov rax, 22
         mov rdi, pipefd
         syscall
 
+        pop rdi
         ; fork
         mov rax, 57
         syscall
@@ -297,16 +297,12 @@ register_for_pipe:
         cmp rax, 0
         jne fail
 
+        cmp rcx, 0
+        jne dup2_stdin
+dup2_stdin_ret:
         ; dup2 pipefd[1] -> stdout
         mov rax, 33
         mov edi, DWORD [pipefd+4]
-        ; mov dil, [pipefd+7]
-        ; shl rdi, 8
-        ; mov dil, [pipefd+6]
-        ; shl rdi, 8
-        ; mov dil, [pipefd+5]
-        ; shl rdi, 8
-        ; mov dil, [pipefd+4]
         mov rsi, 1
         syscall
 
@@ -329,26 +325,12 @@ register_for_pipe:
 
         
 left_hand_side:
-
+        mov rcx, 1
         ; dup2 pipefd[0] -> stdin
         mov rax, 33
         mov edi, DWORD [pipefd]
-        ; mov dil, [pipefd+3]
-        ; shl rdi, 8
-        ; mov dil, [pipefd+2]
-        ; shl rdi, 8
-        ; mov dil, [pipefd+1]
-        ; shl rdi, 8
-        ; mov dil, [pipefd]
         mov rsi, 0
         syscall
-
-        ; mov rax, 61
-        ; mov rdi, 0
-        ; mov rsi, 0
-        ; mov rdx, 0
-        ; mov r10, 0
-        ; syscall
 
         call clean_command_buffer
         pop rsi
@@ -359,10 +341,17 @@ left_hand_side:
         mov r15, rsi
         
         jmp start_copy
-        ; mov rax, 60
-        ; mov rdi, 0
-        ; syscall 
 
+dup2_stdin:
+        mov rax, 33
+        mov rsi, 0
+        syscall
+        
+        cmp rax, -1
+        je fail
+
+
+        jmp dup2_stdin_ret 
 
 debug:
         push rax
@@ -377,9 +366,9 @@ debug:
         ; syscall
 
         mov rax, 1
-        mov rdi, 1
-        mov rsi, deb_mess
-        mov rdx, 5
+        mov rdi, 2
+        mov rsi, command_buffer
+        mov rdx, 3
         syscall
 
         pop rdx
